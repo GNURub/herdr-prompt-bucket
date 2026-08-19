@@ -31,6 +31,7 @@ export class FakeHerdr implements HerdrClient {
   notifications: Array<{title: string; body: string; sound?: string}> = [];
   metadata: Array<{paneId: string; count: number}> = [];
   managerOpened = false;
+  quickAddOpenedFor: string | null = null;
   promptError: Error | null = null;
   lifecycleAuthoritative = true;
 
@@ -79,6 +80,10 @@ export class FakeHerdr implements HerdrClient {
 
   async openManager(): Promise<void> {
     this.managerOpened = true;
+  }
+
+  async openQuickAdd(sourcePaneId: string): Promise<void> {
+    this.quickAddOpenedFor = sourcePaneId;
   }
 
   setAgent(target: string, patch: Partial<AgentInfo>): AgentInfo {

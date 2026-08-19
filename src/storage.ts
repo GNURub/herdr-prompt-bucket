@@ -134,6 +134,16 @@ export class PluginStorage {
     return valid;
   }
 
+  async removeRule(ruleId: string): Promise<boolean> {
+    const config = await this.loadConfig();
+    if (!config.rules.some((rule) => rule.id === ruleId)) return false;
+    await this.saveConfig({
+      ...config,
+      rules: config.rules.filter((rule) => rule.id !== ruleId),
+    });
+    return true;
+  }
+
   private async readStateUnlocked(): Promise<RuntimeState> {
     try {
       return normalizeState(JSON.parse(await readFile(this.statePath, 'utf8')));

@@ -45,6 +45,32 @@ Open the manager:
 herdr plugin action invoke dev.gnurub.prompt-bucket.manage
 ```
 
+Add a prompt for the currently focused agent without leaving Herdr:
+
+```toml
+[[keys.command]]
+key = "prefix+a"
+type = "plugin_action"
+command = "dev.gnurub.prompt-bucket.quick-add"
+description = "add prompt to bucket"
+
+[[keys.command]]
+key = "prefix+m"
+type = "plugin_action"
+command = "dev.gnurub.prompt-bucket.manage"
+description = "manage prompt bucket"
+```
+
+Put that block in `~/.config/herdr/config.toml` (or `%APPDATA%/herdr/config.toml` on
+Windows), then run `herdr server reload-config`. Press the Herdr prefix (`Ctrl+B` by
+default), then `a`; type the prompt and press `Enter`. The popup confirms the save;
+press `Enter` again to close it. Press the prefix followed by `m` to open the manager
+and inspect pending prompts. Quick add creates an automatic, one-shot
+`agent_settled` item scoped to the exact focused pane, agent kind, workspace, and
+working directory. It is removed from the rule list immediately after successful
+delivery. Rules created in the full manager remain reusable unless `oneShot: true` is
+set in YAML.
+
 Or open its popup directly:
 
 ```sh
