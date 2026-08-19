@@ -1,0 +1,41 @@
+version: 1
+defaults:
+  settleMs: 2000
+  pendingTtlMs: 86400000
+  repeat:
+    maxRunsPerSession: 1
+    cooldownMs: 0
+rules:
+  - id: final-review
+    enabled: false
+    trigger: agent_settled
+    match:
+      agents:
+        - codex
+        - claude
+        - opencode
+      workspaces:
+        - "*"
+      cwd:
+        - "**"
+    action: auto
+    prompt: |
+      Re-read the original request, inspect the final diff, and fix any remaining issue.
+
+  - id: workspace-summary
+    enabled: false
+    trigger: workspace_settled
+    target: coordinator
+    match:
+      workspaces:
+        - "*"
+    action: confirm
+    prompt: |
+      All agents in {{workspace}} are settled. Collect their results and produce the final summary.
+
+  - id: blocked-reminder
+    enabled: false
+    trigger: agent_blocked
+    match: {}
+    action: notify
+    prompt: "{{agent}} needs input in {{workspace}} ({{pane_id}})."

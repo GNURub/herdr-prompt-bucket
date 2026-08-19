@@ -1,0 +1,43 @@
+id = "dev.gnurub.prompt-bucket"
+name = "Prompt Bucket"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Store, confirm, and deliver ordered prompts when coding agents settle or block"
+platforms = ["linux", "macos", "windows"]
+
+[[build]]
+command = ["npm", "ci"]
+
+[[build]]
+command = ["npm", "run", "build"]
+
+[[startup]]
+command = ["node", "dist/main.js", "startup"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["node", "dist/main.js", "event"]
+
+[[events]]
+on = "pane.closed"
+command = ["node", "dist/main.js", "event"]
+
+[[actions]]
+id = "manage"
+title = "Manage prompt bucket"
+contexts = ["workspace", "tab", "pane"]
+command = ["node", "dist/main.js", "open-manager"]
+
+[[actions]]
+id = "validate"
+title = "Validate prompt bucket configuration"
+contexts = ["workspace", "tab", "pane"]
+command = ["node", "dist/main.js", "validate"]
+
+[[panes]]
+id = "manager"
+title = "Prompt Bucket"
+placement = "popup"
+width = "90%"
+height = "80%"
+command = ["node", "dist/main.js", "tui"]
