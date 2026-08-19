@@ -3,6 +3,7 @@ import React from 'react';
 import {render} from 'ink';
 import {PromptBucketEngine} from './engine.js';
 import {CliHerdrClient} from './herdr.js';
+import {QuickAddTui} from './quick-add.js';
 import {PluginStorage} from './storage.js';
 import {PromptBucketTui} from './tui.js';
 
@@ -26,6 +27,13 @@ const run = async (): Promise<void> => {
       await storage.initialize();
       await herdr.openManager();
       break;
+    case 'open-quick-add': {
+      await storage.initialize();
+      const sourcePaneId = process.env.HERDR_PANE_ID;
+      if (!sourcePaneId) throw new Error('Quick add requires a focused agent pane');
+      await herdr.openQuickAdd(sourcePaneId);
+      break;
+    }
     case 'validate': {
       const config = await storage.loadConfig();
       process.stdout.write(
@@ -37,6 +45,13 @@ const run = async (): Promise<void> => {
       await storage.initialize();
       render(<PromptBucketTui storage={storage} engine={engine} />);
       break;
+    case 'quick-add-tui': {
+      await storage.initialize();
+      const sourcePaneId = process.env.PROMPT_BUCKET_SOURCE_PANE_ID;
+      if (!sourcePaneId) throw new Error('Quick add source pane was not provided');
+      render(<QuickAddTui engine={engine} herdr={herdr} sourcePaneId={sourcePaneId} />);
+      break;
+    }
     default:
       throw new Error(`Unknown command: ${command}`);
   }

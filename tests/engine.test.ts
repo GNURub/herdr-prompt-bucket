@@ -55,12 +55,53 @@ describe('prompt bucket engine', () => {
     expect(
       ruleMatches(
         automaticRule({
-          match: {agents: ['cod*'], workspaces: ['proj*'], cwd: ['**/project']},
+          match: {agents: ['cod*'], panes: ['w1:*'], workspaces: ['proj*'], cwd: ['**/project']},
         }),
         agent(),
         workspace(),
       ),
     ).toBe(true);
+  });
+
+  it('removes a one-shot rule after its prompt is sent', async () => {
+    const storage = await temporaryStorage();
+    await saveRules(storage, [automaticRule({id: 'one-time', oneShot: true})]);
+    const herdr = new FakeHerdr({
+      agents: [agent({agent_status: 'working'})],
+      workspaces: [workspace()],
+    });
+    const engine = new PromptBucketEngine(storage, herdr, () => now, async () => undefined);
+    await engine.startup();
+
+    herdr.setAgent('term-1', {agent_status: 'idle', state_change_seq: 2});
+    await engine.handleEvent(
+      JSON.stringify({type: 'pane.agent_status_changed', pane_id: 'w1:p1', agent_status: 'idle'}),
+    );
+
+    expect(herdr.prompts).toHaveLength(1);
+    expect((await storage.loadConfig()).rules).toEqual([]);
+    expect((await storage.readState()).queue[0]).toMatchObject({
+      ruleId: 'one-time',
+      status: 'in_flight',
+      oneShot: true,
+    });
+  });
+
+  it('sends a directly queued one-shot immediately when the agent is already free', async () => {
+    const storage = await temporaryStorage();
+    const freeAgent = agent({agent_status: 'done'});
+    const herdr = new FakeHerdr({agents: [freeAgent], workspaces: [workspace()]});
+    const engine = new PromptBucketEngine(storage, herdr, () => now, async () => undefined);
+
+    const outcome = await engine.enqueueOneShot(
+      automaticRule({id: 'queued-once', oneShot: true, prompt: 'next task'}),
+      freeAgent,
+    );
+
+    expect(outcome).toBe('sent');
+    expect(herdr.prompts).toEqual([{target: 'w1:p1', prompt: 'next task'}]);
+    expect((await storage.loadConfig()).rules).toEqual([]);
+    expect((await storage.readState()).runs).toEqual({});
   });
 
   it('does not trigger from an initial idle snapshot', async () => {

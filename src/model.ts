@@ -17,6 +17,7 @@ export type RuleAction = z.infer<typeof ActionSchema>;
 const MatchSchema = z
   .object({
     agents: z.array(z.string().min(1)).optional(),
+    panes: z.array(z.string().min(1)).optional(),
     workspaces: z.array(z.string().min(1)).optional(),
     cwd: z.array(z.string().min(1)).optional(),
   })
@@ -39,6 +40,7 @@ export const RuleSchema = z
     action: ActionSchema,
     target: z.string().min(1).optional(),
     prompt: z.string().min(1).max(32_000),
+    oneShot: z.boolean().optional(),
     repeat: RepeatSchema.optional(),
   })
   .strict()
@@ -170,6 +172,7 @@ export interface QueueItem {
   createdAt: number;
   expiresAt: number;
   error?: string;
+  oneShot?: boolean;
 }
 
 export interface Observation {

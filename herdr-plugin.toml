@@ -29,6 +29,12 @@ contexts = ["workspace", "tab", "pane"]
 command = ["node", "dist/main.js", "open-manager"]
 
 [[actions]]
+id = "quick-add"
+title = "Add prompt to bucket"
+contexts = ["pane"]
+command = ["node", "dist/main.js", "open-quick-add"]
+
+[[actions]]
 id = "validate"
 title = "Validate prompt bucket configuration"
 contexts = ["workspace", "tab", "pane"]
@@ -41,3 +47,11 @@ placement = "popup"
 width = "90%"
 height = "80%"
 command = ["node", "dist/main.js", "tui"]
+
+[[panes]]
+id = "quick-add"
+title = "Add Prompt"
+placement = "popup"
+width = "72%"
+height = "30%"
+command = ["node", "dist/main.js", "quick-add-tui"]

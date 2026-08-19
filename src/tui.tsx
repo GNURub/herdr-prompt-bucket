@@ -133,11 +133,13 @@ const RuleForm = ({initial, storage, onSave, onCancel}: RuleFormProps) => {
         action: nextValues.action,
         match: {
           ...(splitCsv(nextValues.agents) ? {agents: splitCsv(nextValues.agents)} : {}),
+          ...(initial?.match.panes ? {panes: initial.match.panes} : {}),
           ...(splitCsv(nextValues.workspaces) ? {workspaces: splitCsv(nextValues.workspaces)} : {}),
           ...(splitCsv(nextValues.cwd) ? {cwd: splitCsv(nextValues.cwd)} : {}),
         },
         ...(nextValues.target ? {target: nextValues.target} : {}),
         prompt,
+        oneShot: initial?.oneShot ?? false,
         repeat: {
           maxRunsPerSession: Number(nextValues.maxRuns),
           cooldownMs: Number(nextValues.cooldown),
@@ -241,6 +243,7 @@ export const PromptBucketTui = ({storage, engine}: TuiProps) => {
   const [editingRule, setEditingRule] = useState<PromptRule | undefined>();
   const [message, setMessage] = useState('');
   const [deleteArmed, setDeleteArmed] = useState<string | null>(null);
+  const [initialViewChosen, setInitialViewChosen] = useState(false);
 
   const refresh = useCallback(async () => {
     const [nextConfig, nextRuntime] = await Promise.all([
@@ -254,6 +257,17 @@ export const PromptBucketTui = ({storage, engine}: TuiProps) => {
   useEffect(() => {
     void refresh().catch((error: Error) => setMessage(error.message));
   }, [refresh]);
+
+  const pending =
+    runtime?.queue.filter(
+      (item) => item.status === 'awaiting_confirmation' || item.status === 'paused',
+    ).length ?? 0;
+
+  useEffect(() => {
+    if (!runtime || initialViewChosen) return;
+    if (pending > 0) setView('queue');
+    setInitialViewChosen(true);
+  }, [initialViewChosen, pending, runtime]);
 
   const listLength =
     view === 'rules'
@@ -379,10 +393,6 @@ export const PromptBucketTui = ({storage, engine}: TuiProps) => {
     );
   }
 
-  const pending = runtime.queue.filter(
-    (item) => item.status === 'awaiting_confirmation' || item.status === 'paused',
-  ).length;
-
   return (
     <Box flexDirection="column" paddingX={1}>
       <Box justifyContent="space-between">
@@ -390,9 +400,14 @@ export const PromptBucketTui = ({storage, engine}: TuiProps) => {
         <Text color={pending > 0 ? 'yellow' : 'green'}>{pending} pending</Text>
       </Box>
       <Text>
-        {(['rules', 'queue', 'history', 'settings'] as View[]).map((name) =>
-          name === view ? <Text key={name} inverse> {name} </Text> : <Text key={name}> {name} </Text>,
-        )}
+        {(['rules', 'queue', 'history', 'settings'] as View[]).map((name) => {
+          const label = name === 'queue' && pending > 0 ? `queue (${pending})` : name;
+          return name === view ? (
+            <Text key={name} inverse> {label} </Text>
+          ) : (
+            <Text key={name}> {label} </Text>
+          );
+        })}
       </Text>
       <Box flexDirection="column" marginTop={1} minHeight={8}>
         {view === 'rules' && config.rules.length === 0 ? (
@@ -402,9 +417,19 @@ export const PromptBucketTui = ({storage, engine}: TuiProps) => {
           ? config.rules.map((rule, index) => (
               <Text key={rule.id} {...(index === selected ? {color: 'cyan'} : {})}>
                 {index === selected ? '›' : ' '} {rule.enabled ? '●' : '○'} {rule.id} · {rule.trigger} · {rule.action}
+                {rule.oneShot ? ' · one shot' : ''}
               </Text>
             ))
           : null}
+        {view === 'rules' && config.rules[selected] ? (
+          <Box flexDirection="column" marginTop={1} borderStyle="round" paddingX={1}>
+            <Text bold>Prompt</Text>
+            <Text>{clip(config.rules[selected]!.prompt, 180)}</Text>
+            <Text dimColor>
+              {config.rules[selected]!.enabled ? 'enabled' : 'disabled'} · action: {config.rules[selected]!.action}
+            </Text>
+          </Box>
+        ) : null}
         {view === 'queue' && runtime.queue.length === 0 ? (
           <Text dimColor>The queue is empty.</Text>
         ) : null}
@@ -412,10 +437,22 @@ export const PromptBucketTui = ({storage, engine}: TuiProps) => {
           ? runtime.queue.map((item, index) => (
               <Box key={item.id} flexDirection="column">
                 <Text {...(index === selected ? {color: 'cyan'} : {})}>
-                  {index === selected ? '›' : ' '} {item.ruleId} · {item.status} · {item.targetPaneId}
+                  {index === selected ? '›' : ' '} {item.status === 'awaiting_confirmation' ? 'PENDING APPROVAL' : item.status} · {item.ruleId}
                 </Text>
-                {index === selected ? <Text dimColor>{clip(item.prompt)}</Text> : null}
-                {index === selected && item.error ? <Text color="red">{clip(item.error)}</Text> : null}
+                {index === selected ? (
+                  <Box flexDirection="column" marginTop={1} borderStyle="round" paddingX={1}>
+                    <Text bold>Prompt to send</Text>
+                    <Text>{clip(item.prompt, 180)}</Text>
+                    <Text dimColor>Target: {item.targetPaneId}</Text>
+                    {item.status === 'awaiting_confirmation' ? (
+                      <Text bold color="green">Press a to APPROVE AND SEND · r to reject</Text>
+                    ) : null}
+                    {item.status === 'paused' ? (
+                      <Text bold color="yellow">Press t to retry · r to reject</Text>
+                    ) : null}
+                    {item.error ? <Text color="red">{clip(item.error, 180)}</Text> : null}
+                  </Box>
+                ) : null}
               </Box>
             ))
           : null}
@@ -438,7 +475,11 @@ export const PromptBucketTui = ({storage, engine}: TuiProps) => {
       </Box>
       {message ? <Text color={deleteArmed ? 'yellow' : 'green'}>{message}</Text> : null}
       <Text dimColor>
-        Tab view · j/k select · q quit · rules: n/e/space/J/K/d · queue: a approve/r reject/t retry · settings: e
+        {view === 'queue'
+          ? 'a approve and send · r reject · t retry · j/k select · Tab change view · q close'
+          : view === 'rules'
+            ? 'n new · e edit · Space enable/disable · J/K reorder · d d delete · Tab change view · q close'
+            : 'Tab change view · j/k select · q close'}
       </Text>
     </Box>
   );

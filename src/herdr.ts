@@ -13,6 +13,7 @@ export interface HerdrClient {
   notify(title: string, body: string, sound?: 'none' | 'done' | 'request'): Promise<void>;
   reportPending(paneId: string, count: number): Promise<void>;
   openManager(): Promise<void>;
+  openQuickAdd(sourcePaneId: string): Promise<void>;
 }
 
 interface HerdrEnvelope<T> {
@@ -124,6 +125,20 @@ export class CliHerdrClient implements HerdrClient {
       'dev.gnurub.prompt-bucket',
       '--entrypoint',
       'manager',
+    ]);
+  }
+
+  async openQuickAdd(sourcePaneId: string): Promise<void> {
+    await this.run([
+      'plugin',
+      'pane',
+      'open',
+      '--plugin',
+      'dev.gnurub.prompt-bucket',
+      '--entrypoint',
+      'quick-add',
+      '--env',
+      `PROMPT_BUCKET_SOURCE_PANE_ID=${sourcePaneId}`,
     ]);
   }
 }

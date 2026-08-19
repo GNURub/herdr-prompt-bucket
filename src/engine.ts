@@ -100,6 +100,7 @@ export const ruleMatches = (
   workspace: WorkspaceInfo,
 ): boolean =>
   matchesAny(agent.agent, rule.match.agents) &&
+  matchesAny(agent.pane_id, rule.match.panes) &&
   matchesAny(workspace.label, rule.match.workspaces) &&
   matchesAny(agent.cwd, rule.match.cwd);
 
@@ -413,6 +414,7 @@ export class PromptBucketEngine {
           status: candidate.rule.action === 'confirm' ? 'awaiting_confirmation' : 'ready',
           createdAt: now,
           expiresAt: now + config.defaults.pendingTtlMs,
+          ...(candidate.rule.oneShot ? {oneShot: true} : {}),
         };
         state.queue.push(item);
         state.history.push(historyEntry(item.ruleId, item.targetKey, 'queued'));
@@ -435,6 +437,45 @@ export class PromptBucketEngine {
         .notify(notification.title, notification.body, notification.sound)
         .catch(() => undefined);
     }
+  }
+
+  async enqueueOneShot(
+    rule: PromptRule,
+    agent: AgentInfo,
+  ): Promise<'queued' | 'sent'> {
+    const config = await this.storage.loadConfig();
+    const now = this.now();
+    const item: QueueItem = {
+      id: randomUUID(),
+      ruleId: rule.id,
+      ruleIndex: config.rules.length,
+      targetKey: agent.terminal_id,
+      targetPaneId: agent.pane_id,
+      sessionKey: sessionKeyFor(agent),
+      workspaceId: agent.workspace_id,
+      prompt: rule.prompt,
+      action: 'auto',
+      trigger: 'agent_settled',
+      triggerSeq: agent.state_change_seq,
+      status: 'ready',
+      createdAt: now,
+      expiresAt: now + config.defaults.pendingTtlMs,
+      oneShot: true,
+    };
+
+    await this.storage.mutateState((state) => {
+      pruneExpired(state, now);
+      state.queue.push(item);
+      state.history.push(historyEntry(item.ruleId, item.targetKey, 'queued'));
+    });
+    await this.refreshPendingMetadata();
+    await this.drainTarget(agent.terminal_id);
+    const state = await this.storage.readState();
+    return state.queue.some(
+      (candidate) => candidate.id === item.id && candidate.status === 'in_flight',
+    )
+      ? 'sent'
+      : 'queued';
   }
 
   private async completeInflight(targetKey: string): Promise<void> {
@@ -518,6 +559,22 @@ export class PromptBucketEngine {
       await this.herdr
         .notify('Prompt Bucket paused', `${item.ruleId}: ${message}`, 'request')
         .catch(() => undefined);
+      return;
+    }
+
+    if (item.oneShot) {
+      await this.storage.removeRule(item.ruleId).catch(async (error: Error) => {
+        await this.herdr
+          .notify(
+            'Prompt Bucket cleanup failed',
+            `${item.ruleId} was sent but could not be removed: ${error.message.slice(0, 300)}`,
+            'request',
+          )
+          .catch(() => undefined);
+      });
+      await this.storage.mutateState((state) => {
+        delete state.runs[sessionRunKey(item.ruleId, item.sessionKey)];
+      });
     }
   }
 
@@ -547,14 +604,16 @@ export class PromptBucketEngine {
   }
 
   async reject(itemId: string): Promise<void> {
-    const target = await this.storage.mutateState((state) => {
+    const result = await this.storage.mutateState((state) => {
       const item = state.queue.find((candidate) => candidate.id === itemId);
       if (!item) return null;
       state.queue = state.queue.filter((candidate) => candidate.id !== itemId);
       state.history.push(historyEntry(item.ruleId, item.targetKey, 'rejected'));
-      return item.targetKey;
+      return {targetKey: item.targetKey, oneShotRuleId: item.oneShot ? item.ruleId : null};
     });
-    if (target) await this.settleAndDrain(target);
+    if (!result) return;
+    if (result.oneShotRuleId) await this.storage.removeRule(result.oneShotRuleId);
+    await this.settleAndDrain(result.targetKey);
     await this.refreshPendingMetadata();
   }
 
